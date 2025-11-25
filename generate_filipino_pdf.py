@@ -13,40 +13,42 @@ def create_pdf(filename):
     styles = getSampleStyleSheet()
     
     # Custom Styles
-    styles.add(ParagraphStyle(name='TitleStyle', parent=styles['Title'], fontName='Helvetica-Bold', fontSize=24, spaceAfter=12, alignment=TA_CENTER))
-    styles.add(ParagraphStyle(name='SubtitleStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=14, spaceAfter=24, alignment=TA_CENTER, textColor=colors.darkgray))
-    styles.add(ParagraphStyle(name='Heading1', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=18, spaceBefore=20, spaceAfter=12, color=colors.darkblue))
-    styles.add(ParagraphStyle(name='Heading2', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, spaceBefore=15, spaceAfter=10, color=colors.black))
-    styles.add(ParagraphStyle(name='BodyText', parent=styles['Normal'], fontName='Helvetica', fontSize=11, spaceBefore=6, spaceAfter=6, leading=14))
-    styles.add(ParagraphStyle(name='TableHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=TA_CENTER, textColor=colors.white))
-    styles.add(ParagraphStyle(name='TableCell', parent=styles['Normal'], fontName='Helvetica', fontSize=10, alignment=TA_LEFT))
-    styles.add(ParagraphStyle(name='QuestionText', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, spaceAfter=4))
-    styles.add(ParagraphStyle(name='AnswerText', parent=styles['Normal'], fontName='Helvetica', fontSize=11, spaceAfter=8, leftIndent=20))
+    # Use unique names to avoid conflicts with standard styles
+    
+    styles.add(ParagraphStyle(name='F_Title', parent=styles['Title'], fontName='Helvetica-Bold', fontSize=24, spaceAfter=12, alignment=TA_CENTER))
+    styles.add(ParagraphStyle(name='F_Subtitle', parent=styles['Normal'], fontName='Helvetica', fontSize=14, spaceAfter=24, alignment=TA_CENTER, textColor=colors.darkgray))
+    styles.add(ParagraphStyle(name='F_Heading1', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=18, spaceBefore=20, spaceAfter=12, textColor=colors.darkblue))
+    styles.add(ParagraphStyle(name='F_Heading2', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, spaceBefore=15, spaceAfter=10, textColor=colors.black))
+    styles.add(ParagraphStyle(name='F_BodyText', parent=styles['Normal'], fontName='Helvetica', fontSize=11, spaceBefore=6, spaceAfter=6, leading=14))
+    styles.add(ParagraphStyle(name='F_TableHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=TA_CENTER, textColor=colors.white))
+    styles.add(ParagraphStyle(name='F_TableCell', parent=styles['Normal'], fontName='Helvetica', fontSize=10, alignment=TA_LEFT))
+    styles.add(ParagraphStyle(name='F_QuestionText', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, spaceAfter=4))
+    styles.add(ParagraphStyle(name='F_AnswerText', parent=styles['Normal'], fontName='Helvetica', fontSize=11, spaceAfter=8, leftIndent=20))
 
     story = []
 
     # --- Title Page ---
     story.append(Spacer(1, 2*inch))
-    story.append(Paragraph("Filipino Question Words – Study Guide", styles['TitleStyle']))
-    story.append(Paragraph("Essential WH-Questions with Examples and English Translations", styles['SubtitleStyle']))
+    story.append(Paragraph("Filipino Question Words – Study Guide", styles['F_Title']))
+    story.append(Paragraph("Essential WH-Questions with Examples and English Translations", styles['F_Subtitle']))
     story.append(Spacer(1, 1*inch))
-    story.append(Paragraph("Prepared by: ____________________", styles['BodyText']))
+    story.append(Paragraph("Prepared by: ____________________", styles['F_BodyText']))
     story.append(Spacer(1, 0.5*inch))
-    story.append(Paragraph("This guide covers the most common Filipino question words, their meanings, and how to use them in everyday conversation. Perfect for beginner to low-intermediate learners.", styles['BodyText']))
+    story.append(Paragraph("This guide covers the most common Filipino question words, their meanings, and how to use them in everyday conversation. Perfect for beginner to low-intermediate learners.", styles['F_BodyText']))
     story.append(PageBreak())
 
     # --- Introduction ---
-    story.append(Paragraph("Introduction", styles['Heading1']))
+    story.append(Paragraph("Introduction", styles['F_Heading1']))
     intro_text = """
     <b>Mabuhay!</b> Welcome to your essential guide to <b>Filipino Question Words</b> (mga panghalip pananong).<br/><br/>
     Asking questions is one of the most important skills in learning a new language. Whether you are asking for directions, getting to know a new friend, or buying food at the market, knowing the right question word is key to clear communication.<br/><br/>
     In this guide, you will learn the most common Filipino question words, how to use them, and see them in natural, everyday sentences. We have included polite markers like "po" and "opo" in some examples, as using them is standard when speaking to elders, strangers, or people in authority.
     """
-    story.append(Paragraph(intro_text, styles['BodyText']))
+    story.append(Paragraph(intro_text, styles['F_BodyText']))
     story.append(Spacer(1, 12))
 
     # --- Master Table ---
-    story.append(Paragraph("Master Table of Question Words", styles['Heading1']))
+    story.append(Paragraph("Master Table of Question Words", styles['F_Heading1']))
     
     master_data = [
         ["Filipino", "English Meaning", "Notes"],
@@ -80,7 +82,7 @@ def create_pdf(filename):
     story.append(PageBreak())
 
     # --- Examples Section ---
-    story.append(Paragraph("Example Questions & Answers", styles['Heading1']))
+    story.append(Paragraph("Example Questions & Answers", styles['F_Heading1']))
 
     examples = [
         {
@@ -120,7 +122,7 @@ def create_pdf(filename):
                 ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
                 ["Kailan ang birthday mo?", "Sa Oktubre ang birthday ko.", "When is your birthday?", "My birthday is in October."],
                 ["Kailan ka uuwi?", "Uuwi ako bukas.", "When are you going home?", "I am going home tomorrow."],
-                ["Kailan ang alis nila?", "Sa Linggo ang alis nila.", "When is their departure?", "Their departure is on Sunday."]
+                ["Kailan ang alis nila?", "Sa Linggo ang alis nila. (When is their departure?)", "Their departure is on Sunday."]
             ]
         },
         {
@@ -196,18 +198,18 @@ def create_pdf(filename):
     ]
 
     for item in examples:
-        story.append(Paragraph(item["word"], styles['Heading2']))
-        story.append(Paragraph(f"<i>{item['desc']}</i>", styles['BodyText']))
+        story.append(Paragraph(item["word"], styles['F_Heading2']))
+        story.append(Paragraph(f"<i>{item['desc']}</i>", styles['F_BodyText']))
         story.append(Spacer(1, 6))
         
         # Format data for table
         # We need to wrap text in Paragraphs to allow wrapping in cells
         table_data = []
         # Header
-        table_data.append([Paragraph(h, styles['TableHeader']) for h in item["data"][0]])
+        table_data.append([Paragraph(h, styles['F_TableHeader']) for h in item["data"][0]])
         # Rows
         for row in item["data"][1:]:
-            table_data.append([Paragraph(cell, styles['TableCell']) for cell in row])
+            table_data.append([Paragraph(cell, styles['F_TableCell']) for cell in row])
             
         t = Table(table_data, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
         t.setStyle(TableStyle([
@@ -223,8 +225,8 @@ def create_pdf(filename):
     story.append(PageBreak())
 
     # --- Practice Section ---
-    story.append(Paragraph("Quick Practice", styles['Heading1']))
-    story.append(Paragraph("<b>Instructions:</b> Fill in the blank with the correct Filipino question word (<i>Ano, Sino, Saan, Kailan, Bakit, Paano, Magkano, Ilan, Alin, Kanino</i>).", styles['BodyText']))
+    story.append(Paragraph("Quick Practice", styles['F_Heading1']))
+    story.append(Paragraph("<b>Instructions:</b> Fill in the blank with the correct Filipino question word (<i>Ano, Sino, Saan, Kailan, Bakit, Paano, Magkano, Ilan, Alin, Kanino</i>).", styles['F_BodyText']))
     story.append(Spacer(1, 10))
 
     practice_items = [
@@ -241,11 +243,11 @@ def create_pdf(filename):
     ]
 
     for item in practice_items:
-        story.append(Paragraph(item, styles['BodyText']))
+        story.append(Paragraph(item, styles['F_BodyText']))
         story.append(Spacer(1, 6))
 
     story.append(Spacer(1, 20))
-    story.append(Paragraph("Answer Key", styles['Heading2']))
+    story.append(Paragraph("Answer Key", styles['F_Heading2']))
     
     answers = [
         "1. Ano", "2. Saan", "3. Sino", "4. Magkano", "5. Kailan",
@@ -254,12 +256,12 @@ def create_pdf(filename):
     
     # Display answers in a simple list or grid
     answer_text = ", ".join(answers)
-    story.append(Paragraph(answer_text, styles['BodyText']))
+    story.append(Paragraph(answer_text, styles['F_BodyText']))
     
     story.append(PageBreak())
 
     # --- Summary Cheat Sheet ---
-    story.append(Paragraph("Summary Cheat Sheet", styles['Heading1']))
+    story.append(Paragraph("Summary Cheat Sheet", styles['F_Heading1']))
     
     summary_data = [
         ["Question Word", "English", "Example"],
