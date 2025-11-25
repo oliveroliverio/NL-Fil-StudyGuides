@@ -3,296 +3,461 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.pdfgen import canvas as pdf_canvas
+
+# ---- Design System ----
+PALETTE = {
+    "bg_page": colors.whitesmoke,
+    "bg_light": colors.HexColor("#F3F4F6"),
+    "primary": colors.HexColor("#2563EB"),  # Blue-600
+    "primary_dark": colors.HexColor("#1D4ED8"),
+    "accent": colors.HexColor("#F97316"),   # Orange-500
+    "text_main": colors.HexColor("#111827"),
+    "text_muted": colors.HexColor("#6B7280"),
+    "border_subtle": colors.HexColor("#E5E7EB"),
+    "table_header_bg": colors.HexColor("#111827"),
+    "table_row_alt": colors.HexColor("#F9FAFB"),
+}
+
+SPACING = {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 20,
+    "xl": 32,
+}
+
+# ---- Helper Functions ----
+
+def draw_page_frame(canv, doc):
+    """
+    Draws a tinted content background, header bar, and footer on every page.
+    """
+    canv.saveState()
+
+    width, height = doc.pagesize
+
+    # Content background area
+    bg_padding = 6
+    x = doc.leftMargin - bg_padding
+    y = doc.bottomMargin - bg_padding
+    w = doc.width + bg_padding * 2
+    h = height - doc.topMargin - doc.bottomMargin + bg_padding * 2
+
+    canv.setFillColor(PALETTE["bg_light"])
+    canv.setStrokeColor(PALETTE["border_subtle"])
+    canv.setLineWidth(0.5)
+    canv.roundRect(x, y, w, h, radius=10, stroke=1, fill=1)
+
+    # Header bar
+    header_height = 40
+    canv.setFillColor(PALETTE["primary"])
+    canv.setStrokeColor(PALETTE["primary"])
+    canv.rect(0, height - header_height, width, header_height, stroke=0, fill=1)
+
+    # Header text
+    canv.setFont("Helvetica-Bold", 12)
+    canv.setFillColor(colors.white)
+    canv.drawString(50, height - 25, "Filipino Question Words Study Guide")
+
+    canv.setFont("Helvetica", 9)
+    canv.setFillColor(colors.whitesmoke)
+    canv.drawRightString(width - 50, height - 25, "Essential WH-Questions")
+
+    # Footer
+    footer_y = 30
+    canv.setFont("Helvetica", 9)
+    canv.setFillColor(PALETTE["text_muted"])
+    canv.drawString(50, footer_y, "Generated with Python & ReportLab")
+
+    page_label = f"Page {doc.page}"
+    canv.drawRightString(width - 50, footer_y, page_label)
+
+    canv.restoreState()
+
+def make_badge(text, bg_color=None, text_color=colors.white):
+    """
+    Returns a Flowable that looks like a pill/badge.
+    """
+    if bg_color is None:
+        bg_color = PALETTE["accent"]
+
+    badge_style = ParagraphStyle(
+        name="BadgeText",
+        parent=getSampleStyleSheet()["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=text_color,
+        alignment=TA_LEFT,
+    )
+
+    badge_para = Paragraph(text, badge_style)
+
+    tbl = Table([[badge_para]])
+
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), bg_color),
+        ("TEXTCOLOR", (0, 0), (-1, -1), text_color),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("BOX", (0, 0), (-1, -1), 0, colors.white),
+    ]))
+
+    return tbl
+
+def make_card(
+    width,
+    title=None,
+    title_style=None,
+    badge_text=None,
+    badge_color=None,
+    body_paragraphs=None,
+    inner_flowables=None,
+    background=None,
+):
+    """
+    Generic card component.
+    """
+    if background is None:
+        background = colors.white
+
+    rows = []
+
+    # Badge row
+    if badge_text:
+        badge = make_badge(badge_text, bg_color=badge_color or PALETTE["accent"])
+        badge_row = Table([[badge]], colWidths=[width])
+        badge_row.setStyle(TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ]))
+        rows.append([badge_row])
+
+    # Title row
+    if title:
+        if isinstance(title, str):
+            if title_style is None:
+                title_style = ParagraphStyle(
+                    name="CardTitle",
+                    parent=getSampleStyleSheet()["Heading2"],
+                    fontName="Helvetica-Bold",
+                    fontSize=13,
+                    leading=16,
+                    textColor=PALETTE["primary"],
+                )
+            title_para = Paragraph(title, title_style)
+        else:
+            title_para = title
+
+        rows.append([title_para])
+
+    # Body paragraphs
+    if body_paragraphs:
+        for item in body_paragraphs:
+            if isinstance(item, str):
+                p = Paragraph(item, ParagraphStyle(
+                    name="CardBody",
+                    parent=getSampleStyleSheet()["Normal"],
+                    fontName="Helvetica",
+                    fontSize=10,
+                    leading=13,
+                    textColor=PALETTE["text_main"],
+                ))
+            else:
+                p = item
+            rows.append([p])
+
+    # Extra flowables
+    if inner_flowables:
+        for f in inner_flowables:
+            rows.append([f])
+
+    card = Table(rows, colWidths=[width])
+
+    card.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), background),
+        ("BOX", (0, 0), (-1, -1), 1, PALETTE["border_subtle"]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 14),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+        ("TOPPADDING", (0, 0), (-1, -1), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+    ]))
+
+    return card
 
 def create_pdf(filename):
-    doc = SimpleDocTemplate(filename, pagesize=A4,
-                            rightMargin=72, leftMargin=72,
-                            topMargin=72, bottomMargin=72)
+    doc = SimpleDocTemplate(
+        filename,
+        pagesize=A4,
+        leftMargin=50,
+        rightMargin=50,
+        topMargin=80,
+        bottomMargin=70,
+    )
     
     styles = getSampleStyleSheet()
     
-    # Custom Styles
-    # Use unique names to avoid conflicts with standard styles
-    
-    styles.add(ParagraphStyle(name='F_Title', parent=styles['Title'], fontName='Helvetica-Bold', fontSize=24, spaceAfter=12, alignment=TA_CENTER))
-    styles.add(ParagraphStyle(name='F_Subtitle', parent=styles['Normal'], fontName='Helvetica', fontSize=14, spaceAfter=24, alignment=TA_CENTER, textColor=colors.darkgray))
-    styles.add(ParagraphStyle(name='F_Heading1', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=18, spaceBefore=20, spaceAfter=12, textColor=colors.darkblue))
-    styles.add(ParagraphStyle(name='F_Heading2', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, spaceBefore=15, spaceAfter=10, textColor=colors.black))
-    styles.add(ParagraphStyle(name='F_BodyText', parent=styles['Normal'], fontName='Helvetica', fontSize=11, spaceBefore=6, spaceAfter=6, leading=14))
-    styles.add(ParagraphStyle(name='F_TableHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=TA_CENTER, textColor=colors.white))
-    styles.add(ParagraphStyle(name='F_TableCell', parent=styles['Normal'], fontName='Helvetica', fontSize=10, alignment=TA_LEFT))
-    styles.add(ParagraphStyle(name='F_QuestionText', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, spaceAfter=4))
-    styles.add(ParagraphStyle(name='F_AnswerText', parent=styles['Normal'], fontName='Helvetica', fontSize=11, spaceAfter=8, leftIndent=20))
+    # --- Styles ---
+    title_style = ParagraphStyle(
+        name="HeroTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=26,
+        leading=30,
+        textColor=PALETTE["primary_dark"],
+        alignment=TA_CENTER,
+        spaceAfter=SPACING["sm"],
+    )
+
+    subtitle_style = ParagraphStyle(
+        name="HeroSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=12,
+        leading=15,
+        textColor=PALETTE["text_muted"],
+        alignment=TA_CENTER,
+        spaceAfter=SPACING["xl"],
+    )
+
+    section_heading_style = ParagraphStyle(
+        name="SectionHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=18,
+        textColor=PALETTE["primary"],
+        spaceBefore=SPACING["lg"],
+        spaceAfter=SPACING["sm"],
+    )
+
+    body_style = ParagraphStyle(
+        name="BodyText",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=11,
+        leading=14,
+        textColor=PALETTE["text_main"],
+        spaceAfter=SPACING["sm"],
+    )
+
+    table_header_style = ParagraphStyle(
+        name="TableHeader",
+        parent=body_style,
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        textColor=colors.white,
+        alignment=TA_CENTER,
+    )
+
+    table_body_style = ParagraphStyle(
+        name="TableBody",
+        parent=body_style,
+        fontSize=11,
+        leading=14,
+    )
 
     story = []
 
-    # --- Title Page ---
-    story.append(Spacer(1, 2*inch))
-    story.append(Paragraph("Filipino Question Words – Study Guide", styles['F_Title']))
-    story.append(Paragraph("Essential WH-Questions with Examples and English Translations", styles['F_Subtitle']))
-    story.append(Spacer(1, 1*inch))
-    story.append(Paragraph("Prepared by: ____________________", styles['F_BodyText']))
-    story.append(Spacer(1, 0.5*inch))
-    story.append(Paragraph("This guide covers the most common Filipino question words, their meanings, and how to use them in everyday conversation. Perfect for beginner to low-intermediate learners.", styles['F_BodyText']))
-    story.append(PageBreak())
+    # --- Hero Section ---
+    story.append(Paragraph("Filipino Question Words", title_style))
+    story.append(Paragraph("Essential WH-Questions with Examples and English Translations", subtitle_style))
 
-    # --- Introduction ---
-    story.append(Paragraph("Introduction", styles['F_Heading1']))
-    intro_text = """
-    <b>Mabuhay!</b> Welcome to your essential guide to <b>Filipino Question Words</b> (mga panghalip pananong).<br/><br/>
-    Asking questions is one of the most important skills in learning a new language. Whether you are asking for directions, getting to know a new friend, or buying food at the market, knowing the right question word is key to clear communication.<br/><br/>
-    In this guide, you will learn the most common Filipino question words, how to use them, and see them in natural, everyday sentences. We have included polite markers like "po" and "opo" in some examples, as using them is standard when speaking to elders, strangers, or people in authority.
-    """
-    story.append(Paragraph(intro_text, styles['F_BodyText']))
-    story.append(Spacer(1, 12))
+    # Badges
+    difficulty_badge = make_badge("Beginner · A1", bg_color=PALETTE["primary"])
+    topic_badge = make_badge("Grammar", bg_color=PALETTE["accent"])
+    language_badge = make_badge("Tagalog / Filipino", bg_color=PALETTE["table_header_bg"])
 
-    # --- Master Table ---
-    story.append(Paragraph("Master Table of Question Words", styles['F_Heading1']))
-    
-    master_data = [
-        ["Filipino", "English Meaning", "Notes"],
-        ["Ano", "What", "Used for things, events, or abstract concepts."],
-        ["Sino", "Who", "Used for people."],
-        ["Saan", "Where", "Used for places (locations, directions)."],
-        ["Kailan", "When", "Used for time (dates, days, future/past events)."],
-        ["Bakit", "Why", "Used for reasons or explanations."],
-        ["Paano", "How", "Used for procedures, manner, or ways."],
-        ["Magkano", "How much", "Used for asking prices."],
-        ["Ilan", "How many", "Used for counting quantity."],
-        ["Alin", "Which", "Used when choosing between options."],
-        ["Kanino", "Whose / To whom", "Used for possession or direction."],
-        ["Kumusta", "How is/are...", "Used to ask about condition/well-being."]
-    ]
-
-    t = Table(master_data, colWidths=[1.5*inch, 1.5*inch, 3*inch])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
-        ('PADDING', (0, 0), (-1, -1), 6),
+    badges_row = Table(
+        [[difficulty_badge, topic_badge, language_badge]],
+        colWidths=[100, 80, 130],
+        hAlign="CENTER",
+    )
+    badges_row.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
-    story.append(t)
+    story.append(badges_row)
+    story.append(Spacer(1, SPACING["xl"]))
+
+    # --- Introduction Card ---
+    intro_text = """
+    <b>Mabuhay!</b> Welcome to your essential guide to <b>Filipino Question Words</b> (mga panghalip pananong).
+    Asking questions is one of the most important skills in learning a new language.
+    """
+    
+    intro_card = make_card(
+        width=480,
+        title="Introduction",
+        title_style=section_heading_style,
+        body_paragraphs=[intro_text],
+    )
+    story.append(intro_card)
+    story.append(Spacer(1, SPACING["lg"]))
+
+    # --- Master Table Card ---
+    master_data = [
+        [Paragraph("Filipino", table_header_style), Paragraph("English", table_header_style), Paragraph("Notes", table_header_style)],
+        ["Ano", "What", "Things, events, abstract concepts"],
+        ["Sino", "Who", "People"],
+        ["Saan", "Where", "Places, locations"],
+        ["Kailan", "When", "Time, dates"],
+        ["Bakit", "Why", "Reasons"],
+        ["Paano", "How", "Procedures, manner"],
+        ["Magkano", "How much", "Prices"],
+        ["Ilan", "How many", "Quantity"],
+        ["Alin", "Which", "Choices"],
+        ["Kanino", "Whose", "Possession"],
+        ["Kumusta", "How is/are", "Condition"],
+    ]
+    
+    # Convert string rows to Paragraphs
+    formatted_master_data = [master_data[0]]
+    for row in master_data[1:]:
+        formatted_master_data.append([Paragraph(cell, table_body_style) for cell in row])
+
+    t_master = Table(formatted_master_data, colWidths=[100, 100, 250], hAlign="LEFT")
+    t_master.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), PALETTE["table_header_bg"]),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+        # Zebra striping
+        *[("BACKGROUND", (0, i), (-1, i), PALETTE["table_row_alt"]) for i in range(2, len(master_data), 2)],
+        ("BOX", (0, 0), (-1, -1), 0.5, PALETTE["border_subtle"]),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, PALETTE["border_subtle"]),
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+
+    master_card = make_card(
+        width=480,
+        title="Master Table",
+        title_style=section_heading_style,
+        badge_text="Reference",
+        inner_flowables=[t_master]
+    )
+    story.append(master_card)
     story.append(PageBreak())
 
     # --- Examples Section ---
-    story.append(Paragraph("Example Questions & Answers", styles['F_Heading1']))
+    story.append(Paragraph("Detailed Examples", section_heading_style))
+    story.append(Spacer(1, SPACING["md"]))
 
     examples = [
         {
-            "word": "1. Ano (What)",
+            "word": "Ano (What)",
             "desc": "Used to ask about things, names, or information.",
             "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Ano ang pangalan mo?", "Maria ang pangalan ko.", "What is your name?", "My name is Maria."],
-                ["Ano ang gusto mong kainin?", "Gusto ko ng adobo.", "What do you want to eat?", "I want adobo."],
-                ["Ano ito?", "Regalo 'yan para sa iyo.", "What is this?", "That is a gift for you."]
+                ["Ano ang pangalan mo?", "What is your name?"],
+                ["Ano ito?", "What is this?"]
             ]
         },
         {
-            "word": "2. Sino (Who)",
+            "word": "Sino (Who)",
             "desc": "Used to ask about people.",
             "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Sino ang kasama mo?", "Kasama ko ang kapatid ko.", "Who is with you?", "I am with my sibling."],
-                ["Sino siya?", "Siya si Mr. Cruz, ang titser namin.", "Who is he?", "He is Mr. Cruz, our teacher."],
-                ["Sino ang nagluto nito?", "Si Nanay ang nagluto.", "Who cooked this?", "Mom cooked this."]
+                ["Sino siya?", "Who is he?"],
+                ["Sino ang kasama mo?", "Who is with you?"]
             ]
         },
         {
-            "word": "3. Saan (Where)",
+            "word": "Saan (Where)",
             "desc": "Used to ask about locations.",
             "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Saan ka nakatira?", "Nakatira ako sa Manila.", "Where do you live?", "I live in Manila."],
-                ["Saan tayo kakain?", "Sa Jollibee tayo kumain.", "Where shall we eat?", "Let's eat at Jollibee."],
-                ["Saan ang banyo?", "Nasa kanan, malapit sa pinto.", "Where is the bathroom?", "It's on the right, near the door."]
+                ["Saan ka nakatira?", "Where do you live?"],
+                ["Saan tayo kakain?", "Where shall we eat?"]
             ]
         },
-        {
-            "word": "4. Kailan (When)",
-            "desc": "Used to ask about time or dates.",
+         {
+            "word": "Kailan (When)",
+            "desc": "Used to ask about time.",
             "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Kailan ang birthday mo?", "Sa Oktubre ang birthday ko.", "When is your birthday?", "My birthday is in October."],
-                ["Kailan ka uuwi?", "Uuwi ako bukas.", "When are you going home?", "I am going home tomorrow."],
-                ["Kailan ang alis nila?", "Sa Linggo ang alis nila. (When is their departure?)", "Their departure is on Sunday."]
+                ["Kailan ang birthday mo?", "When is your birthday?"],
+                ["Kailan ka uuwi?", "When are you going home?"]
             ]
         },
-        {
-            "word": "5. Bakit (Why)",
-            "desc": "Used to ask for reasons.",
-            "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Bakit ka masaya?", "Kasi nakapasa ako sa exam.", "Why are you happy?", "Because I passed the exam."],
-                ["Bakit wala si Ana?", "May sakit siya.", "Why is Ana not here?", "She is sick."],
-                ["Bakit mahal ito?", "Kasi imported ang materyales.", "Why is this expensive?", "Because the materials are imported."]
-            ]
-        },
-        {
-            "word": "6. Paano (How)",
-            "desc": "Used to ask about manner or procedure.",
-            "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Paano pumunta sa airport?", "Sumakay ka ng taxi o bus.", "How do you go to the airport?", "Take a taxi or a bus."],
-                ["Paano lutuin ang sinigang?", "Pakuluan muna ang karne.", "How do you cook sinigang?", "Boil the meat first."],
-                ["Paano mo nalaman?", "Sinabi sa akin ni Pedro.", "How did you know?", "Pedro told me."]
-            ]
-        },
-        {
-            "word": "7. Magkano (How much)",
-            "desc": "Used to ask about prices.",
-            "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Magkano ito?", "Limampung piso lang po.", "How much is this?", "Just fifty pesos, sir/ma'am."],
-                ["Magkano ang pamasahe?", "Dalawampung piso ang bayad.", "How much is the fare?", "The payment is twenty pesos."],
-                ["Magkano ang sapatos na iyan?", "Mahal, isang libo.", "How much are those shoes?", "Expensive, one thousand."]
-            ]
-        },
-        {
-            "word": "8. Ilan (How many)",
-            "desc": "Used to ask about quantity.",
-            "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Ilan ang kapatid mo?", "Dalawa ang kapatid ko.", "How many siblings do you have?", "I have two siblings."],
-                ["Ilan ang bibilhin mo?", "Tatlo lang.", "How many will you buy?", "Just three."],
-                ["Ilan taon ka na?", "Dalawampu't isa na ako.", "How old are you?", "I am twenty-one."]
-            ]
-        },
-        {
-            "word": "9. Alin (Which)",
-            "desc": "Used to ask to choose between options.",
-            "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Alin ang mas gusto mo, kape o tsaa?", "Mas gusto ko ang kape.", "Which do you prefer, coffee or tea?", "I prefer coffee."],
-                ["Alin dito ang sa iyo?", "Ang asul na bag ang akin.", "Which of these is yours?", "The blue bag is mine."],
-                ["Alin ang mas mura?", "Ito ang mas mura.", "Which is cheaper?", "This one is cheaper."]
-            ]
-        },
-        {
-            "word": "10. Kanino (Whose / To whom)",
-            "desc": "Used to ask about ownership or direction.",
-            "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Kanino ang lapis na ito?", "Kay Juan 'yan.", "Whose pencil is this?", "That is Juan's."],
-                ["Kanino ka sasama?", "Sasama ako kay Ate.", "With whom will you go?", "I will go with Big Sister."],
-                ["Kanino mo ibibigay ito?", "Ibibigay ko ito sa titser.", "To whom will you give this?", "I will give this to the teacher."]
-            ]
-        },
-        {
-            "word": "11. Kumusta (How is/are)",
-            "desc": "Used as a greeting or to ask about condition.",
-            "data": [
-                ["Filipino Question", "Filipino Answer", "English Question", "English Answer"],
-                ["Kumusta ka?", "Mabuti naman, salamat.", "How are you?", "I'm fine, thank you."],
-                ["Kumusta ang trabaho?", "Okay lang, medyo busy.", "How is work?", "It's okay, a bit busy."],
-                ["Kumusta ang pamilya mo?", "Nasa probinsya sila ngayon.", "How is your family?", "They are in the province now."]
-            ]
-        }
     ]
 
+    # Create a card for each example
     for item in examples:
-        story.append(Paragraph(item["word"], styles['F_Heading2']))
-        story.append(Paragraph(f"<i>{item['desc']}</i>", styles['F_BodyText']))
-        story.append(Spacer(1, 6))
+        # Mini table for Q&A
+        qa_data = [[Paragraph("Question / Answer", table_header_style), Paragraph("English", table_header_style)]]
+        for q, e in item["data"]:
+            qa_data.append([Paragraph(q, table_body_style), Paragraph(e, table_body_style)])
         
-        # Format data for table
-        # We need to wrap text in Paragraphs to allow wrapping in cells
-        table_data = []
-        # Header
-        table_data.append([Paragraph(h, styles['F_TableHeader']) for h in item["data"][0]])
-        # Rows
-        for row in item["data"][1:]:
-            table_data.append([Paragraph(cell, styles['F_TableCell']) for cell in row])
-            
-        t = Table(table_data, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.gray),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-            ('PADDING', (0, 0), (-1, -1), 4),
+        t_qa = Table(qa_data, colWidths=[220, 220], hAlign="LEFT")
+        t_qa.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), PALETTE["table_header_bg"]),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.5, PALETTE["border_subtle"]),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, PALETTE["border_subtle"]),
+            ("PADDING", (0, 0), (-1, -1), 6),
         ]))
-        story.append(t)
-        story.append(Spacer(1, 12))
-        
+
+        card = make_card(
+            width=480,
+            title=item["word"],
+            title_style=ParagraphStyle(name="ExTitle", parent=section_heading_style, fontSize=12),
+            body_paragraphs=[item["desc"]],
+            inner_flowables=[Spacer(1, 6), t_qa],
+            background=colors.white
+        )
+        story.append(card)
+        story.append(Spacer(1, SPACING["md"]))
+
     story.append(PageBreak())
 
     # --- Practice Section ---
-    story.append(Paragraph("Quick Practice", styles['F_Heading1']))
-    story.append(Paragraph("<b>Instructions:</b> Fill in the blank with the correct Filipino question word (<i>Ano, Sino, Saan, Kailan, Bakit, Paano, Magkano, Ilan, Alin, Kanino</i>).", styles['F_BodyText']))
-    story.append(Spacer(1, 10))
-
+    practice_intro = "Fill in the blank with the correct Filipino question word."
+    
     practice_items = [
-        "1. __________ ang pangalan ng aso mo? (What is the name of your dog?)",
-        "2. __________ ka nakatira? (Where do you live?)",
-        "3. __________ ang kasama mong kumain? (Who is your companion eating?)",
-        "4. __________ ang kilo ng mangga? (How much is a kilo of mangoes?)",
-        "5. __________ ka aalis papuntang Japan? (When are you leaving for Japan?)",
-        "6. __________ mo ginawa ang cake na ito? (How did you make this cake?)",
-        "7. __________ ka umiiyak? (Why are you crying?)",
-        "8. __________ ang mga anak mo? (How many are your children?)",
-        "9. __________ ang payong na ito? (Whose umbrella is this?)",
-        "10. __________ ang mas masarap, adobo o sinigang? (Which is more delicious, adobo or sinigang?)"
-    ]
-
-    for item in practice_items:
-        story.append(Paragraph(item, styles['F_BodyText']))
-        story.append(Spacer(1, 6))
-
-    story.append(Spacer(1, 20))
-    story.append(Paragraph("Answer Key", styles['F_Heading2']))
-    
-    answers = [
-        "1. Ano", "2. Saan", "3. Sino", "4. Magkano", "5. Kailan",
-        "6. Paano", "7. Bakit", "8. Ilan", "9. Kanino", "10. Alin"
+        "1. __________ ang pangalan ng aso mo? (What)",
+        "2. __________ ka nakatira? (Where)",
+        "3. __________ ang kasama mong kumain? (Who)",
+        "4. __________ ang kilo ng mangga? (How much)",
+        "5. __________ ka aalis? (When)",
     ]
     
-    # Display answers in a simple list or grid
-    answer_text = ", ".join(answers)
-    story.append(Paragraph(answer_text, styles['F_BodyText']))
+    practice_paras = [Paragraph(p, body_style) for p in practice_items]
     
-    story.append(PageBreak())
+    practice_card = make_card(
+        width=480,
+        title="Quick Practice",
+        title_style=section_heading_style,
+        badge_text="Quiz",
+        badge_color=PALETTE["accent"],
+        body_paragraphs=[practice_intro] + practice_paras
+    )
+    story.append(practice_card)
+    story.append(Spacer(1, SPACING["lg"]))
 
-    # --- Summary Cheat Sheet ---
-    story.append(Paragraph("Summary Cheat Sheet", styles['F_Heading1']))
-    
-    summary_data = [
-        ["Question Word", "English", "Example"],
-        ["Ano", "What", "Ano ito? (What is this?)"],
-        ["Sino", "Who", "Sino siya? (Who is he/she?)"],
-        ["Saan", "Where", "Saan ka pupunta? (Where are you going?)"],
-        ["Kailan", "When", "Kailan ang party? (When is the party?)"],
-        ["Bakit", "Why", "Bakit ka tumatawa? (Why are you laughing?)"],
-        ["Paano", "How", "Paano ito gamitin? (How do use this?)"],
-        ["Magkano", "How much", "Magkano ito? (How much is this?)"],
-        ["Ilan", "How many", "Ilan ang aso mo? (How many dogs do you have?)"],
-        ["Alin", "Which", "Alin ang gusto mo? (Which do you want?)"],
-        ["Kanino", "Whose", "Kanino ito? (Whose is this?)"],
-        ["Kumusta", "How is/are", "Kumusta ka? (How are you?)"]
-    ]
-
-    t_summary = Table(summary_data, colWidths=[1.5*inch, 1.5*inch, 3*inch])
-    t_summary.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('PADDING', (0, 0), (-1, -1), 6),
-    ]))
-    story.append(t_summary)
+    # --- Answer Key ---
+    answers = "1. Ano, 2. Saan, 3. Sino, 4. Magkano, 5. Kailan"
+    answer_card = make_card(
+        width=480,
+        title="Answer Key",
+        title_style=section_heading_style,
+        body_paragraphs=[answers],
+        background=PALETTE["bg_light"]
+    )
+    story.append(answer_card)
 
     # Build PDF
-    doc.build(story)
+    doc.build(
+        story,
+        onFirstPage=draw_page_frame,
+        onLaterPages=draw_page_frame,
+    )
     print(f"PDF generated successfully: {filename}")
 
 if __name__ == "__main__":
