@@ -1,9 +1,12 @@
+import argparse
+import re
+import sys
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, ListFlowable, ListItem
 from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -31,6 +34,9 @@ SPACING = {
     "xl": 32,
 }
 
+# Global variable for the document title to be used in the page frame
+DOC_TITLE = "FILIPINO STUDY GUIDE"
+
 # ---- Helper Functions ----
 
 def draw_page_frame(canv, doc):
@@ -46,40 +52,35 @@ def draw_page_frame(canv, doc):
     canv.rect(0, 0, width, height, stroke=0, fill=1)
 
     # 2. Content Area Background (Card-like container)
-    # We'll make this a large rounded rect to frame the content
     bg_padding = 10
     x = doc.leftMargin - bg_padding
     y = doc.bottomMargin - bg_padding
     w = doc.width + bg_padding * 2
     h = height - doc.topMargin - doc.bottomMargin + bg_padding * 2
 
-    canv.setFillColor(PALETTE["bg_page"]) # Keep it same as page or slightly lighter? Let's keep it clean dark.
-    # Actually, let's make the "Page" look like a high-tech slate.
-    # We will draw a neon border around the content area.
     canv.setStrokeColor(PALETTE["primary"])
     canv.setLineWidth(2)
     canv.roundRect(x, y, w, h, radius=15, stroke=1, fill=0)
 
     # 3. Header Bar (Neon Strip)
     header_height = 50
-    # Gradient-like effect or solid neon? Let's go solid Pink for contrast with Cyan border
     canv.setFillColor(PALETTE["secondary"])
     canv.setStrokeColor(PALETTE["secondary"])
-    # Draw a top bar that goes edge-to-edge
     canv.rect(0, height - header_height, width, header_height, stroke=0, fill=1)
 
     # Header Text
-    canv.setFont("Impact", 20) # Updated Font
+    canv.setFont("Impact", 20)
     canv.setFillColor(colors.white)
-    canv.drawString(doc.leftMargin, height - 35, "FILIPINO QUESTION WORDS")
+    # Use the global DOC_TITLE
+    canv.drawString(doc.leftMargin, height - 35, DOC_TITLE.upper())
 
-    canv.setFont("Verdana-Bold", 10) # Updated Font
-    canv.setFillColor(colors.black) # Black text on Pink background for punk vibe
+    canv.setFont("Verdana-Bold", 10)
+    canv.setFillColor(colors.black)
     canv.drawRightString(width - doc.rightMargin, height - 32, "QUICK STUDY GUIDE")
 
     # 4. Footer
     footer_y = 20
-    canv.setFont("Verdana", 8) # Updated Font
+    canv.setFont("Verdana", 8)
     canv.setFillColor(PALETTE["text_muted"])
     canv.drawString(doc.leftMargin, footer_y, "NEO-PUNK EDITION · v2.0")
 
@@ -90,15 +91,15 @@ def draw_page_frame(canv, doc):
 
 def make_badge(text, bg_color=None, text_color=colors.black):
     """
-    Returns a pill/badge. Default text color black for high contrast on neon.
+    Returns a pill/badge.
     """
     if bg_color is None:
-        bg_color = PALETTE["tertiary"] # Lime default
+        bg_color = PALETTE["tertiary"]
 
     badge_style = ParagraphStyle(
         name="BadgeText",
         parent=getSampleStyleSheet()["Normal"],
-        fontName="Verdana-Bold", # Updated Font
+        fontName="Verdana-Bold",
         fontSize=8,
         leading=10,
         textColor=text_color,
@@ -108,7 +109,6 @@ def make_badge(text, bg_color=None, text_color=colors.black):
     badge_para = Paragraph(text.upper(), badge_style)
 
     tbl = Table([[badge_para]])
-
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), bg_color),
         ("TEXTCOLOR", (0, 0), (-1, -1), text_color),
@@ -116,26 +116,13 @@ def make_badge(text, bg_color=None, text_color=colors.black):
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        # We can't do real rounded corners on table cells easily, 
-        # but we can simulate a "blocky" tag look which fits punk.
-        ("BOX", (0, 0), (-1, -1), 0, colors.white), 
+        ("BOX", (0, 0), (-1, -1), 0, colors.white),
     ]))
-
     return tbl
 
-def make_card(
-    width,
-    title=None,
-    title_style=None,
-    badge_text=None,
-    badge_color=None,
-    body_paragraphs=None,
-    inner_flowables=None,
-    background=None,
-    border_color=None
-):
+def make_card(width, title=None, title_style=None, body_flowables=None, background=None, border_color=None):
     """
-    Neo-Punk Card: Dark background, Neon border, Sharp edges (or simulated rounded via frame).
+    Generic Card container.
     """
     if background is None:
         background = PALETTE["bg_card"]
@@ -144,65 +131,37 @@ def make_card(
 
     rows = []
 
-    # Badge row (Floating on top right or left? Let's put it inline with title if possible, or row 0)
-    # For this design, let's put badge in the first row, left aligned
-    if badge_text:
-        badge = make_badge(badge_text, bg_color=badge_color or PALETTE["tertiary"])
-        badge_row = Table([[badge]], colWidths=[width])
-        badge_row.setStyle(TableStyle([
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ]))
-        rows.append([badge_row])
-
     # Title row
     if title:
         if isinstance(title, str):
             if title_style is None:
+                # Default title style if not provided
                 title_style = ParagraphStyle(
                     name="CardTitle",
                     parent=getSampleStyleSheet()["Heading2"],
-                    fontName="Impact", # Updated Font
+                    fontName="Impact",
                     fontSize=16,
                     leading=18,
                     textColor=PALETTE["primary"],
-                    textTransform='uppercase', # Punk style
+                    textTransform='uppercase',
                 )
             title_para = Paragraph(title.upper(), title_style)
         else:
             title_para = title
-
         rows.append([title_para])
 
-    # Body paragraphs
-    if body_paragraphs:
-        for item in body_paragraphs:
-            if isinstance(item, str):
-                p = Paragraph(item, ParagraphStyle(
-                    name="CardBody",
-                    parent=getSampleStyleSheet()["Normal"],
-                    fontName="Verdana", # Updated Font
-                    fontSize=10,
-                    leading=13,
-                    textColor=PALETTE["text_main"],
-                ))
-            else:
-                p = item
-            rows.append([p])
+    # Body flowables
+    if body_flowables:
+        for item in body_flowables:
+            rows.append([item])
 
-    # Extra flowables
-    if inner_flowables:
-        for f in inner_flowables:
-            rows.append([f])
+    if not rows:
+        return Spacer(1, 1)
 
     card = Table(rows, colWidths=[width])
-
     card.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), background),
-        ("BOX", (0, 0), (-1, -1), 1.5, border_color), # Thicker neon border
+        ("BOX", (0, 0), (-1, -1), 1.5, border_color),
         ("LEFTPADDING", (0, 0), (-1, -1), 12),
         ("RIGHTPADDING", (0, 0), (-1, -1), 12),
         ("TOPPADDING", (0, 0), (-1, -1), 12),
@@ -211,279 +170,333 @@ def make_card(
 
     return card
 
-def create_pdf(filename):
+# ---- Markdown Parsing ----
+
+def parse_markdown_text(text):
+    """
+    Converts basic markdown formatting to ReportLab XML tags.
+    **bold** -> <b>bold</b>
+    *italic* -> <i>italic</i>
+    <br> -> <br/>
+    """
+    # Bold
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    # Italic
+    text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
+    # Line breaks
+    text = text.replace('<br>', '<br/>')
+    return text
+
+def parse_markdown_file(file_path, styles):
+    """
+    Parses a markdown file and returns a list of ReportLab Flowables.
+    """
+    with open(file_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    flowables = []
+    
+    # Styles
+    h1_style = styles['HeroTitle']
+    h2_style = styles['SectionHeading']
+    h3_style = styles['SubHeading']
+    body_style = styles['NeoBodyText']
+    bullet_style = styles['NeoBulletText']
+    quote_style = styles['NeoQuoteText']
+    
+    # Table parsing state
+    in_table = False
+    table_header = []
+    table_rows = []
+    table_alignments = []
+
+    for line in lines:
+        line = line.strip()
+        
+        # Skip empty lines unless we are in a table (end of table)
+        if not line:
+            if in_table:
+                # Render the table
+                flowables.append(create_table(table_header, table_rows, styles))
+                in_table = False
+                table_header = []
+                table_rows = []
+            continue
+
+        # --- Table Handling ---
+        if line.startswith('|'):
+            if not in_table:
+                in_table = True
+                # Check if it's a separator line (e.g. |---|---|)
+                if '---' in line:
+                    continue # Skip separator for now
+                
+                # Assume first row is header if we just started
+                # But wait, markdown tables usually have header, then separator, then body.
+                # We need to buffer.
+                
+            # Process row
+            # Remove leading/trailing pipes and split
+            content = line.strip('|').split('|')
+            row_data = [parse_markdown_text(c.strip()) for c in content]
+            
+            if '---' in line:
+                # This is the separator line, ignore it but maybe parse alignment later
+                continue
+            
+            if not table_header:
+                table_header = row_data
+            else:
+                table_rows.append(row_data)
+            continue
+        
+        # If we were in a table and hit a non-table line
+        if in_table:
+            flowables.append(create_table(table_header, table_rows, styles))
+            in_table = False
+            table_header = []
+            table_rows = []
+
+        # --- Headers ---
+        if line.startswith('# '):
+            text = parse_markdown_text(line[2:])
+            # Update global title if it's the first H1? 
+            # For now just add as H1
+            flowables.append(Paragraph(text.upper(), h1_style))
+            flowables.append(Spacer(1, SPACING['lg']))
+        elif line.startswith('## '):
+            text = parse_markdown_text(line[3:])
+            flowables.append(Paragraph(text.upper(), h2_style))
+        elif line.startswith('### '):
+            text = parse_markdown_text(line[4:])
+            flowables.append(Paragraph(text, h3_style))
+        
+        # --- Lists ---
+        elif line.startswith('* ') or line.startswith('- '):
+            text = parse_markdown_text(line[2:])
+            # Create a list item
+            # For simplicity, using a Paragraph with a bullet char for now, 
+            # or we could use ListFlowable if we grouped them.
+            # Let's use a Paragraph with bullet style.
+            p = Paragraph(f"• {text}", bullet_style)
+            flowables.append(p)
+            
+        # --- Blockquotes ---
+        elif line.startswith('> '):
+            text = parse_markdown_text(line[2:])
+            p = Paragraph(text, quote_style)
+            flowables.append(p)
+            
+        # --- Normal Paragraph ---
+        else:
+            text = parse_markdown_text(line)
+            flowables.append(Paragraph(text, body_style))
+
+    # End of file, check if table pending
+    if in_table:
+        flowables.append(create_table(table_header, table_rows, styles))
+
+    return flowables
+
+def create_table(header, rows, styles):
+    """
+    Creates a styled ReportLab Table from parsed data.
+    """
+    if not header and not rows:
+        return Spacer(1, 1)
+
+    data = []
+    
+    # Header
+    if header:
+        data.append([Paragraph(h, styles['NeoTableHeader']) for h in header])
+    
+    # Rows
+    for row in rows:
+        data.append([Paragraph(c, styles['NeoTableBody']) for c in row])
+
+    # Calculate col widths dynamically or fixed?
+    # Let's try to be smart or just even.
+    # A4 width is ~595 pts. Margins 30+30=60. Content ~535.
+    # If 3 cols, ~178 each.
+    num_cols = len(header) if header else len(rows[0])
+    col_width = 530 / num_cols if num_cols > 0 else 530
+    
+    t = Table(data, colWidths=[col_width] * num_cols)
+    
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), PALETTE["table_header_bg"]),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, PALETTE["primary"]),
+        ("TEXTCOLOR", (0, 0), (-1, 0), PALETTE["primary"]),
+        
+        # Zebra striping for rows
+        *[("BACKGROUND", (0, i), (-1, i), PALETTE["table_row_odd"]) for i in range(1, len(data), 2)],
+        *[("BACKGROUND", (0, i), (-1, i), PALETTE["table_row_even"]) for i in range(2, len(data), 2)],
+        
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOX", (0, 0), (-1, -1), 1, PALETTE["text_muted"]),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.grey),
+    ]))
+    
+    return t
+
+def create_styles():
+    """
+    Defines the ReportLab styles.
+    """
+    styles = getSampleStyleSheet()
+    
+    # Hero Title
+    styles.add(ParagraphStyle(
+        name="HeroTitle",
+        parent=styles["Title"],
+        fontName="Impact",
+        fontSize=36,
+        leading=40,
+        textColor=PALETTE["primary"],
+        alignment=TA_CENTER,
+        spaceAfter=SPACING["lg"],
+    ))
+
+    # Section Heading (H2)
+    styles.add(ParagraphStyle(
+        name="SectionHeading",
+        parent=styles["Heading2"],
+        fontName="Impact",
+        fontSize=20,
+        leading=24,
+        textColor=PALETTE["secondary"],
+        spaceBefore=SPACING["lg"],
+        spaceAfter=SPACING["sm"],
+        textTransform='uppercase',
+    ))
+
+    # Sub Heading (H3)
+    styles.add(ParagraphStyle(
+        name="SubHeading",
+        parent=styles["Heading3"],
+        fontName="Verdana-Bold",
+        fontSize=14,
+        leading=16,
+        textColor=PALETTE["tertiary"],
+        spaceBefore=SPACING["md"],
+        spaceAfter=SPACING["xs"],
+    ))
+
+    # Body Text
+    styles.add(ParagraphStyle(
+        name="NeoBodyText",
+        parent=styles["Normal"],
+        fontName="Verdana",
+        fontSize=10,
+        leading=14,
+        textColor=PALETTE["text_main"],
+        spaceAfter=SPACING["sm"],
+        alignment=TA_JUSTIFY,
+    ))
+
+    # Bullet Text
+    styles.add(ParagraphStyle(
+        name="NeoBulletText",
+        parent=styles["Normal"],
+        fontName="Verdana",
+        fontSize=10,
+        leading=14,
+        textColor=PALETTE["text_main"],
+        leftIndent=20,
+        spaceAfter=SPACING["xs"],
+    ))
+
+    # Quote Text
+    styles.add(ParagraphStyle(
+        name="NeoQuoteText",
+        parent=styles["Normal"],
+        fontName="Verdana", # Italic not available in base Verdana, using normal for now or simulated
+        fontSize=10,
+        leading=14,
+        textColor=PALETTE["text_muted"],
+        leftIndent=30,
+        rightIndent=30,
+        spaceAfter=SPACING["sm"],
+    ))
+
+    # Table Styles
+    styles.add(ParagraphStyle(
+        name="NeoTableHeader",
+        parent=styles["Normal"],
+        fontName="Verdana-Bold",
+        fontSize=10,
+        textColor=PALETTE["primary"],
+        alignment=TA_LEFT,
+    ))
+
+    styles.add(ParagraphStyle(
+        name="NeoTableBody",
+        parent=styles["Normal"],
+        fontName="Verdana",
+        fontSize=10,
+        textColor=PALETTE["text_main"],
+        leading=12,
+    ))
+
+    return styles
+
+def create_pdf(input_file, output_file):
     # --- Register Fonts ---
-    pdfmetrics.registerFont(TTFont('Impact', '/System/Library/Fonts/Supplemental/Impact.ttf'))
-    pdfmetrics.registerFont(TTFont('Verdana', '/System/Library/Fonts/Supplemental/Verdana.ttf'))
-    pdfmetrics.registerFont(TTFont('Verdana-Bold', '/System/Library/Fonts/Supplemental/Verdana Bold.ttf'))
+    try:
+        pdfmetrics.registerFont(TTFont('Impact', '/System/Library/Fonts/Supplemental/Impact.ttf'))
+        pdfmetrics.registerFont(TTFont('Verdana', '/System/Library/Fonts/Supplemental/Verdana.ttf'))
+        pdfmetrics.registerFont(TTFont('Verdana-Bold', '/System/Library/Fonts/Supplemental/Verdana Bold.ttf'))
+    except:
+        print("Warning: System fonts not found. Falling back to defaults.")
+        # In a real scenario, we'd handle this better.
 
     doc = SimpleDocTemplate(
-        filename,
+        output_file,
         pagesize=A4,
-        leftMargin=30, # Narrower margins for "Chart" feel
+        leftMargin=30,
         rightMargin=30,
         topMargin=70,
         bottomMargin=50,
     )
     
-    styles = getSampleStyleSheet()
+    styles = create_styles()
     
-    # --- Styles ---
-    # Hero Title - Big, Neon
-    hero_title_style = ParagraphStyle(
-        name="HeroTitle",
-        parent=styles["Title"],
-        fontName="Impact", # Updated Font
-        fontSize=42, # Bigger for Impact
-        leading=44,
-        textColor=PALETTE["primary"],
-        alignment=TA_CENTER,
-        spaceAfter=SPACING["xs"],
-    )
-
-    hero_subtitle_style = ParagraphStyle(
-        name="HeroSubtitle",
-        parent=styles["Normal"],
-        fontName="Verdana-Bold", # Updated Font
-        fontSize=12,
-        leading=14,
-        textColor=PALETTE["text_main"],
-        alignment=TA_CENTER,
-        spaceAfter=SPACING["lg"],
-    )
-
-    section_heading_style = ParagraphStyle(
-        name="SectionHeading",
-        parent=styles["Heading2"],
-        fontName="Impact", # Updated Font
-        fontSize=20,
-        leading=22,
-        textColor=PALETTE["secondary"], # Pink headings
-        spaceBefore=SPACING["md"],
-        spaceAfter=SPACING["sm"],
-        textTransform='uppercase',
-    )
-
-    body_style = ParagraphStyle(
-        name="BodyText",
-        parent=styles["Normal"],
-        fontName="Verdana", # Updated Font
-        fontSize=10,
-        leading=13,
-        textColor=PALETTE["text_main"],
-        spaceAfter=SPACING["sm"],
-    )
-
-    table_header_style = ParagraphStyle(
-        name="TableHeader",
-        parent=body_style,
-        fontName="Verdana-Bold", # Updated Font
-        fontSize=10,
-        textColor=PALETTE["primary"], # Neon Cyan text on dark header
-        alignment=TA_LEFT,
-    )
-
-    table_body_style = ParagraphStyle(
-        name="TableBody",
-        parent=body_style,
-        fontSize=10,
-        leading=12,
-        textColor=PALETTE["text_main"],
-    )
-
+    # Parse Markdown
+    print(f"Parsing {input_file}...")
+    content_flowables = parse_markdown_file(input_file, styles)
+    
+    # Build Story
     story = []
-
-    # --- Hero Section ---
-    story.append(Paragraph("MGA PANGHALIP PANANONG", hero_title_style))
-    story.append(Paragraph("FILIPINO QUESTION WORDS CHEAT SHEET", hero_subtitle_style))
-
-    # Badges Row
-    b1 = make_badge("BEGINNER", bg_color=PALETTE["secondary"])
-    b2 = make_badge("GRAMMAR", bg_color=PALETTE["tertiary"])
-    b3 = make_badge("TAGALOG", bg_color=PALETTE["primary"])
-
-    badges_row = Table(
-        [[b1, b2, b3]],
-        colWidths=[80, 80, 80],
-        hAlign="CENTER",
-    )
-    badges_row.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-    ]))
-    story.append(badges_row)
-    story.append(Spacer(1, SPACING["lg"]))
-
-    # --- Introduction (Full Width) ---
-    intro_text = """
-    <b>MABUHAY!</b> Asking questions is key to connection. Use this chart to master the essential WH-questions in Filipino.
-    """
-    intro_card = make_card(
-        width=530, # Full width roughly
-        title="INTRODUCTION",
-        title_style=section_heading_style,
-        body_paragraphs=[intro_text],
-        border_color=PALETTE["text_muted"] # Subtle border for intro
-    )
-    story.append(intro_card)
-    story.append(Spacer(1, SPACING["md"]))
-
-    # --- Master Table (Full Width) ---
-    master_data = [
-        [Paragraph("FILIPINO", table_header_style), Paragraph("ENGLISH", table_header_style), Paragraph("USAGE", table_header_style)],
-        ["Ano", "What", "Things, events, ideas"],
-        ["Sino", "Who", "People"],
-        ["Saan", "Where", "Places, locations"],
-        ["Kailan", "When", "Time, dates"],
-        ["Bakit", "Why", "Reasons"],
-        ["Paano", "How", "Procedures"],
-        ["Magkano", "How much", "Prices"],
-        ["Ilan", "How many", "Quantity"],
-        ["Alin", "Which", "Choices"],
-        ["Kanino", "Whose", "Possession"],
-        ["Kumusta", "How is/are", "Condition"],
-    ]
     
-    formatted_master_data = [master_data[0]]
-    for row in master_data[1:]:
-        formatted_master_data.append([Paragraph(cell, table_body_style) for cell in row])
-
-    t_master = Table(formatted_master_data, colWidths=[100, 100, 300], hAlign="LEFT")
-    t_master.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), PALETTE["table_header_bg"]),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, PALETTE["primary"]), # Neon line under header
-        # Zebra striping
-        *[("BACKGROUND", (0, i), (-1, i), PALETTE["table_row_odd"]) for i in range(1, len(master_data), 2)],
-        *[("BACKGROUND", (0, i), (-1, i), PALETTE["table_row_even"]) for i in range(2, len(master_data), 2)],
-        ("PADDING", (0, 0), (-1, -1), 6),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-
-    master_card = make_card(
-        width=530,
-        title="MASTER REFERENCE",
-        title_style=section_heading_style,
-        badge_text="CORE",
-        badge_color=PALETTE["primary"],
-        inner_flowables=[t_master],
-        border_color=PALETTE["primary"]
-    )
-    story.append(master_card)
-    story.append(Spacer(1, SPACING["md"]))
-    story.append(PageBreak())
-
-    # --- Examples Section (2-Column Grid) ---
-    story.append(Paragraph("USAGE EXAMPLES", section_heading_style))
-    story.append(Spacer(1, SPACING["sm"]))
-
-    examples = [
-        {"word": "ANO (What)", "desc": "Things / Info", "data": [["Ano ito?", "What is this?"], ["Ano ang pangalan mo?", "What is your name?"]]},
-        {"word": "SINO (Who)", "desc": "People", "data": [["Sino siya?", "Who is he?"], ["Sino ang kasama mo?", "Who is with you?"]]},
-        {"word": "SAAN (Where)", "desc": "Locations", "data": [["Saan ka nakatira?", "Where do you live?"], ["Saan tayo kakain?", "Where shall we eat?"]]},
-        {"word": "KAILAN (When)", "desc": "Time", "data": [["Kailan ang birthday mo?", "When is your birthday?"], ["Kailan ka uuwi?", "When are you going home?"]]},
-        {"word": "BAKIT (Why)", "desc": "Reasons", "data": [["Bakit ka masaya?", "Why are you happy?"], ["Bakit mahal ito?", "Why is this expensive?"]]},
-        {"word": "PAANO (How)", "desc": "Manner", "data": [["Paano ito gamitin?", "How do you use this?"], ["Paano pumunta doon?", "How do you go there?"]]},
-        {"word": "MAGKANO (Price)", "desc": "Cost", "data": [["Magkano ito?", "How much is this?"], ["Magkano ang pamasahe?", "How much is the fare?"]]},
-        {"word": "ILAN (Count)", "desc": "Quantity", "data": [["Ilan ang kapatid mo?", "How many siblings?"], ["Ilan taon ka na?", "How old are you?"]]},
-    ]
-
-    # Process into rows of 2
-    card_rows = []
-    current_row = []
+    # Wrap content in a "Card" if we want, or just flow it.
+    # Given the dynamic nature, flowing it is safer for page breaks.
+    # But to keep the "Neo-Punk" look, maybe we can wrap sections?
+    # For now, let's just flow the content directly but use the styles to maintain the look.
     
-    for i, item in enumerate(examples):
-        # Mini table for Q&A
-        qa_data = []
-        for q, e in item["data"]:
-            qa_data.append([Paragraph(q, table_body_style), Paragraph(e, table_body_style)])
-        
-        t_qa = Table(qa_data, colWidths=[110, 110], hAlign="LEFT")
-        t_qa.setStyle(TableStyle([
-            ("LINEBELOW", (0, 0), (-1, -2), 0.5, PALETTE["text_muted"]),
-            ("PADDING", (0, 0), (-1, -1), 4),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ]))
-
-        # Alternate border colors for punk vibe
-        border_c = PALETTE["secondary"] if i % 2 == 0 else PALETTE["tertiary"]
-
-        card = make_card(
-            width=260, # Half width roughly
-            title=item["word"],
-            title_style=ParagraphStyle(name="ExTitle", parent=section_heading_style, fontSize=12, textColor=border_c),
-            badge_text=item["desc"],
-            badge_color=border_c,
-            inner_flowables=[t_qa],
-            border_color=border_c
-        )
-        current_row.append(card)
-
-        if len(current_row) == 2:
-            card_rows.append(current_row)
-            current_row = []
-    
-    if current_row: # Append leftover
-        card_rows.append(current_row)
-
-    # Add rows to story
-    for row in card_rows:
-        # If single item, pad it
-        if len(row) == 1:
-            row.append(Spacer(1, 1)) # Placeholder
-        
-        t_row = Table([row], colWidths=[265, 265], hAlign="CENTER")
-        t_row.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        story.append(t_row)
-        story.append(Spacer(1, SPACING["md"]))
-
-    story.append(PageBreak())
-
-    # --- Practice & Answer Key (Stacked) ---
-    
-    practice_items = [
-        "1. __________ ang pangalan ng aso mo? (What)",
-        "2. __________ ka nakatira? (Where)",
-        "3. __________ ang kasama mong kumain? (Who)",
-        "4. __________ ang kilo ng mangga? (How much)",
-        "5. __________ ka aalis? (When)",
-    ]
-    practice_paras = [Paragraph(p, body_style) for p in practice_items]
-    
-    practice_card = make_card(
-        width=530,
-        title="QUICK PRACTICE",
-        title_style=section_heading_style,
-        badge_text="QUIZ",
-        badge_color=PALETTE["secondary"],
-        body_paragraphs=practice_paras,
-        border_color=PALETTE["secondary"]
-    )
-    story.append(practice_card)
-    story.append(Spacer(1, SPACING["md"]))
-
-    answers = "1. ANO, 2. SAAN, 3. SINO, 4. MAGKANO, 5. KAILAN"
-    answer_card = make_card(
-        width=530,
-        title="ANSWER KEY",
-        title_style=section_heading_style,
-        body_paragraphs=[answers],
-        background=PALETTE["table_header_bg"],
-        border_color=PALETTE["text_muted"]
-    )
-    story.append(answer_card)
+    story.extend(content_flowables)
 
     # Build PDF
+    print(f"Generating PDF: {output_file}...")
     doc.build(
         story,
         onFirstPage=draw_page_frame,
         onLaterPages=draw_page_frame,
     )
-    print(f"PDF generated successfully: {filename}")
+    print("Done.")
 
 if __name__ == "__main__":
-    create_pdf("filipino_question_words_study_guide.pdf")
+    parser = argparse.ArgumentParser(description="Generate Neo-Punk PDF from Markdown.")
+    parser.add_argument("input_file", help="Path to input Markdown file")
+    parser.add_argument("output_file", help="Path to output PDF file")
+    
+    args = parser.parse_args()
+    
+    # Update global title based on filename
+    base_name = args.input_file.split("/")[-1].replace(".md", "").replace("_", " ")
+    # Remove leading numbers if present (e.g. "01 ")
+    base_name = re.sub(r'^\d+\s*', '', base_name)
+    DOC_TITLE = base_name
+    
+    create_pdf(args.input_file, args.output_file)
